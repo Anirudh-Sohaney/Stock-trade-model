@@ -24,7 +24,9 @@ from logger import setup_logger
 logger = setup_logger("main")
 
 
-def load_config(config_path="config.json"):
+def load_config(config_path=None):
+    if config_path is None:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
     if not os.path.exists(config_path):
         logger.error(f"Config file not found: {config_path}")
         sys.exit(1)
@@ -55,7 +57,7 @@ def run_loop(pm, interval_minutes=15):
 def main():
     parser = argparse.ArgumentParser(description="Stage 3 Trading Bot")
     parser.add_argument("--loop", action="store_true", help="Run continuously")
-    parser.add_argument("--config", default="config.json", help="Config file path")
+    parser.add_argument("--config", default=None, help="Config file path")
     args = parser.parse_args()
     config = load_config(args.config)
     pm = PortfolioManager(config)

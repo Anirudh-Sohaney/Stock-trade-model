@@ -29,6 +29,8 @@ class PortfolioManager:
 
     def _load_tickers(self):
         ticker_file = self.config.get("ticker_file", "tickers.txt")
+        if not os.path.isabs(ticker_file):
+            ticker_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ticker_file)
         try:
             with open(ticker_file, "r") as f:
                 tickers = [line.strip() for line in f if line.strip()]
