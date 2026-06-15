@@ -2,7 +2,7 @@
     "alpaca_api_key": "",
     "alpaca_secret_key": "",
     "paper_trading": true,
-    "initial_capital": 10000.0,
+    "initial_capital": 100000.0,
     "exit_bars": 1,
     "max_positions": 5,
     "sizing_method": "rank_based",

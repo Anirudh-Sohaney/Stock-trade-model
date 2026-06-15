@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trading bot — terminal dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div id="app">
+  <div id="left">
+    <div class="section">
+      <div class="section-title">BOT STATUS</div>
+      <div class="section-body">
+        <span class="label">BOT STATUS:</span><span id="bot-status" class="value">OFFLINE</span>
+        <span class="label">MARKET:</span><span id="market" class="value">--</span>
+        <span class="label">TRADING:</span><span id="trading" class="value">NO</span>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">PERFORMANCE</div>
+      <div class="section-body">
+        <span class="label">BALANCE:</span><span id="balance" class="value">--</span>
+        <span class="label">ALL TIME RETURN:</span><span id="all-time" class="value">--</span>
+        <span class="label">THIS WEEK:</span><span id="this-week" class="value">--</span>
+        <span class="label">TODAY:</span><span id="today" class="value">--</span>
+        <span class="label">OPEN POSITIONS:</span><span id="open-pos" class="value">0</span>
+        <span class="label">BUYING POWER:</span><span id="buying-power" class="value">--</span>
+        <span class="label">CAPITAL DEPLOYED:</span><span id="cap-deployed" class="value">0%</span>
+        <span class="label">TRADES TODAY:</span><span id="trades-today" class="value">0</span>
+        <span class="label">TRADES THIS WEEK:</span><span id="trades-week" class="value">0</span>
+        <span class="label">WIN RATE:</span><span id="win-rate" class="value">--</span>
+        <span class="label">STRATEGY:</span><span class="value dim">STAGE3</span>
+        <span class="label">HOLD PERIOD:</span><span id="hold-period" class="value">--</span>
+        <span class="label">LAST UPDATE:</span><span id="last-update" class="value dim">--</span>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">OPEN POSITIONS</div>
+      <div class="section-body" id="positions-list">
+        <span class="dim">(no open positions)</span>
+      </div>
+    </div>
+  </div>
+  <div id="right">
+    <div class="section-title" style="padding:8px 12px;border-bottom:1px solid #333;">TRADING LOG</div>
+    <div id="log-container">
+      <div id="log-content"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const evtSource = new EventSource('/api/stream');
+
+evtSource.onmessage = function(e) {
+  try {
+    const data = JSON.parse(e.data);
+    updateDashboard(data);
+  } catch(err) {
+    console.error(err);
+  }
+};
+
+evtSource.onerror = function() {
+  document.getElementById('bot-status').textContent = 'OFFLINE';
+  document.getElementById('bot-status').className = 'value error';
+};
+
+function updateDashboard(data) {
+  // Status
+  const botStat = data.bot_status || 'OFFLINE';
+  const el = document.getElementById('bot-status');
+  el.textContent = botStat;
+  el.className = 'value ' + (botStat === 'ONLINE' ? 'ok' : botStat === 'SIMULATION' ? 'warn' : 'error');
+
+  document.getElementById('market').textContent = data.market || '--';
+  document.getElementById('trading').textContent = data.trading || 'NO';
+
+  // Stats
+  const s = data.stats || {};
+  const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+  document.getElementById('balance').textContent = s.current_balance ? fmt.format(s.current_balance) : '--';
+  document.getElementById('all-time').textContent = s.all_time_return != null ? (s.all_time_return >= 0 ? '+' : '') + s.all_time_return.toFixed(2) + '%' : '--';
+  document.getElementById('open-pos').textContent = s.open_positions != null ? s.open_positions : '0';
+  document.getElementById('buying-power').textContent = s.buying_power != null ? fmt.format(s.buying_power) : '--';
+  document.getElementById('cap-deployed').textContent = s.capital_deployed_pct != null ? s.capital_deployed_pct.toFixed(1) + '%' : '0%';
+  document.getElementById('trades-today').textContent = s.trades_today != null ? s.trades_today : '0';
+  document.getElementById('trades-week').textContent = s.trades_week != null ? s.trades_week : '0';
+  document.getElementById('win-rate').textContent = s.win_rate != null ? s.win_rate.toFixed(1) + '%' : '--';
+  document.getElementById('hold-period').textContent = s.hold_period || '--';
+  document.getElementById('last-update').textContent = s.timestamp || '--';
+
+  // Positions
+  const pos = data.positions || [];
+  const posEl = document.getElementById('positions-list');
+  if (pos.length === 0) {
+    posEl.innerHTML = '<span class="dim">(no open positions)</span>';
+  } else {
+    posEl.innerHTML = pos.map(p => {
+      const pl = p.current_price ? ((p.current_price - p.entry_price) / p.entry_price * 100) : 0;
+      const sign = pl >= 0 ? '+' : '';
+      return `<span class="label-sm">${p.ticker}</span><span class="value-sm ${pl >= 0 ? 'ok' : 'error'}">${sign}${pl.toFixed(2)}%</span>`;
+    }).join('');
+  }
+
+  // Log
+  const events = data.events || [];
+  const logEl = document.getElementById('log-content');
+  const autoScroll = (logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 50);
+
+  events.forEach(ev => {
+    const row = document.createElement('div');
+    row.className = 'log-entry';
+    if (ev.type === 'cycle') {
+      row.innerHTML = `<span class="log-ts">${ev.ts}</span> <span class="log-msg cycle">=== TRADING CYCLE ===</span>`;
+    } else if (ev.type === 'entry') {
+      row.innerHTML = `<span class="log-ts">${ev.ts}</span> <span class="log-action buy">BUY</span> <span class="log-ticker">${ev.ticker}</span> <span class="log-msg dim">${ev.qty} shares @ $${ev.price.toFixed(2)}</span>`;
+    } else if (ev.type === 'order') {
+      const cls = ev.side === 'BUY' ? 'buy' : 'sell';
+      row.innerHTML = `<span class="log-ts">${ev.ts}</span> <span class="log-action ${cls}">${ev.side}</span> <span class="log-ticker">${ev.ticker}</span> <span class="log-msg dim">${ev.qty} shares</span>`;
+    } else if (ev.type === 'exit') {
+      row.innerHTML = `<span class="log-ts">${ev.ts}</span> <span class="log-action sell">EXIT</span> <span class="log-ticker">${ev.ticker}</span>`;
+    } else if (ev.type === 'close') {
+      row.innerHTML = `<span class="log-ts">${ev.ts}</span> <span class="log-action sell">CLOSE</span> <span class="log-ticker">${ev.ticker}</span>`;
+    } else if (ev.type === 'market') {
+      row.innerHTML = `<span class="log-ts">${ev.ts}</span> <span class="log-msg">Market ${ev.status === 'CLOSED' ? 'closed' : 'closing soon'}</span>`;
+    } else if (ev.type === 'signals') {
+      row.innerHTML = `<span class="log-ts">${ev.ts}</span> <span class="log-msg dim">Signals found: ${ev.count}</span>`;
+    } else if (ev.type === 'summary') {
+      row.innerHTML = `<span class="log-ts">${ev.ts}</span> <span class="log-msg dim">Positions: ${ev.positions}/${ev.max_pos} | Exposure: $${ev.exposure.toFixed(2)} | Cash: $${ev.cash.toFixed(2)}</span>`;
+    } else {
+      row.innerHTML = `<span class="log-ts">${ev.ts}</span> <span class="log-msg dim">${ev.msg || ''}</span>`;
+    }
+    logEl.appendChild(row);
+  });
+
+  // Keep only last 200 entries
+  while (logEl.children.length > 200) {
+    logEl.removeChild(logEl.firstChild);
+  }
+
+  if (autoScroll) {
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+}
+</script>
+</body>
+</html>
